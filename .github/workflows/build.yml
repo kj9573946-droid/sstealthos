@@ -1,0 +1,64 @@
+name: Build StealthOS ISO
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free up disk space on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo apt-get clean
+          df -h /
+
+      - name: Build ISO inside a Debian 12 container
+        run: |
+          docker run --name sb --privileged -v "$PWD":/src:ro debian:12 bash -c '
+            set -e
+            apt-get update
+            apt-get install -y iputils-ping
+            bash /src/build-stealthos-v8.sh
+            mkdir -p /export
+            cp /opt/stealthos-build/*.iso* /opt/stealthos-build/build.log /export/
+          '
+
+      - name: Collect the ISO and split it for upload
+        run: |
+          mkdir out
+          docker cp sb:/export/. out/
+          cd out
+          split -b 1900M -d --additional-suffix=.part live-image-amd64.hybrid.iso stealthos.iso.
+          rm live-image-amd64.hybrid.iso
+          ls -lh
+
+      - name: Save the build log (even if the build failed)
+        if: always()
+        run: docker cp sb:/opt/stealthos-build/build.log ./build.log || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Publish as a private draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: iso-${{ github.run_number }}
+          name: StealthOS ISO build ${{ github.run_number }}
+          draft: true
+          files: out/*
+          body: |
+            Join the parts, then flash:
+              cat stealthos.iso.*.part > stealthos.iso
+              sha256sum stealthos.iso
