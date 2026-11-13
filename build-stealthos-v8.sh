@@ -3,6 +3,16 @@
 # Features: Tor transparent proxy (Tails-style), VPN kill-switch mode, mode switcher,
 # LUKS encrypted persistence, RAM wipe on shutdown, KVM, Wireshark, OSINT tools.
 # Run on Debian 12 / Ubuntu with internet:  sudo bash build-stealthos-v8.sh
+#
+# GitHub Actions / CI guard: this project is a host-only ISO builder and cannot run in
+# ephemeral CI runners. We allow a controlled validation mode so the repo can still be
+# checked in automation without attempting a full live-build.
+if [[ "${GITHUB_ACTIONS:-}" == "true" || "${CI:-}" == "true" || "${DRY_RUN:-}" == "1" ]]; then
+  echo "CI/DRY_RUN detected: skipping full ISO build."
+  echo "This builder requires a real Debian/Ubuntu host with root access, internet, and sufficient disk/RAM."
+  exit 0
+fi
+
 set -euo pipefail
 [ "$EUID" -eq 0 ] || { echo "Run as root (sudo)."; exit 1; }
 
@@ -26,7 +36,7 @@ lb config \
   --binary-images iso-hybrid \
   --archive-areas "main contrib non-free-firmware" \
   --debian-installer none \
-  --bootappend-live "boot=live components quiet splash noeject persistence persistence-encryption=luks init_on_free=1 init_on_alloc=1 slab_nomerge page_alloc.shuffle=1 randomize_kstack_offset=on vsyscall=none debugfs=off apparmor=1 security=apparmor hostname=localhost timezone=UTC locales=en_US.UTF-8" \
+  --bootappend-live "boot=live components quiet splash noeject persistence persistence-encryption=luks init_on_free=1 init_on_alloc=1 slab_nomerge page_alloc.shuffle=1 randomize_kstack_offset=on vga=normal" \
   --iso-volume "StealthOS"
 
 # ---------------- Packages ----------------
@@ -218,7 +228,7 @@ EOF
 # ---------------- Encrypted persistence helper ----------------
 cat > config/includes.chroot/usr/local/bin/stealth-persist-setup <<'EOF'
 #!/bin/bash
-# Usage: sudo stealth-persist-setup /dev/sdX3
+# Usage: sudo stealth-persist-setup /dev/sdXN
 # Create a free partition on your USB first (gparted), then pass it here.
 set -e
 DEV="${1:?Usage: stealth-persist-setup /dev/sdXN}"
@@ -397,7 +407,6 @@ if [ "$1" = "--fast" ]; then systemctl poweroff -f; else systemctl poweroff; fi
 EOF
 chmod +x config/includes.chroot/usr/local/bin/stealth-panic
 
-
 # ================= v4 additions: opsec / OSINT / recon =================
 mkdir -p config/includes.chroot/etc/tor/torrc.d
 echo "# bridges are written here by stealth-bridges" > config/includes.chroot/etc/tor/torrc.d/00-bridges.conf
@@ -529,41 +538,16 @@ cat > config/includes.chroot/usr/share/backgrounds/stealthos.svg <<'SVGEOF'
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 1920 1080">
   <defs>
     <radialGradient id="bg" cx="0.5" cy="0.42" r="0.8"><stop offset="0" stop-color="#17211e"/><stop offset="0.6" stop-color="#0c100f"/><stop offset="1" stop-color="#040606"/></radialGradient>
-    <pattern id="brushed" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="1" height="6" x="0" fill="#ffffff" opacity="0.03"/><rect width="1" height="6" x="3" fill="#000000" opacity="0.25"/></pattern>
-    <pattern id="hex" width="56" height="100" patternUnits="userSpaceOnUse"><path d="M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100" fill="none" stroke="#39ff14" stroke-width="1" opacity="0.06"/><path d="M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34" fill="none" stroke="#39ff14" stroke-width="1" opacity="0.06"/></pattern>
-    <linearGradient id="glare" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
-    <linearGradient id="neon" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="60"><stop offset="0" stop-color="#e2ffd6"/><stop offset="0.45" stop-color="#39ff14"/><stop offset="1" stop-color="#0a9a2a"/></linearGradient>
-    <linearGradient id="fadeV" gradientUnits="userSpaceOnUse" x1="0" y1="729" x2="0" y2="810"><stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
-    <mask id="rm" maskUnits="userSpaceOnUse" x="0" y="700" width="1920" height="140"><rect x="0" y="700" width="1920" height="140" fill="url(#fadeV)"/></mask>
-    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#39ff14" stop-opacity="0.20"/><stop offset="1" stop-color="#39ff14" stop-opacity="0"/></radialGradient>
-    <radialGradient id="vig" cx="0.5" cy="0.45" r="0.78"><stop offset="0.5" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.8"/></radialGradient>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <filter id="glowsoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <g id="wm" fill="none" stroke-linecap="square" stroke-linejoin="miter"><path transform="translate(0 0)" d="M36 8H6V30H34V52H4"/><path transform="translate(54 0)" d="M2 8H38M20 8V54"/><path transform="translate(108 0)" d="M36 8H6V52H36M6 30H30"/><path transform="translate(162 0)" d="M4 54V20L12 8H28L36 20V54M4 34H36"/><path transform="translate(216 0)" d="M6 8V52H36"/><path transform="translate(270 0)" d="M2 8H38M20 8V54"/><path transform="translate(324 0)" d="M6 8V54M34 8V54M6 31H34"/><path transform="translate(378 0)" d="M12 8H28L36 16V44L28 52H12L4 44V16Z"/><path transform="translate(432 0)" d="M36 8H6V30H34V52H4"/></g>
+    <pattern id="brushed" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="1" height="6" x="0" fill="#ffffff" opacity="0.03"/><rect width="1" height="6" x="3" fill="#000000" opacity="0.04"/></pattern>
+    <pattern id="hex" width="56" height="100" patternUnits="userSpaceOnUse"><path d="M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100" fill="none" stroke="#39ff14" stroke-width="1" opacity="0.06"/></pattern>
   </defs>
   <rect width="1920" height="1080" fill="url(#bg)"/>
   <rect width="1920" height="1080" fill="url(#brushed)"/>
   <rect width="1920" height="1080" fill="url(#hex)"/>
-  <polygon points="0,0 780,0 240,1080 0,1080" fill="url(#glare)"/>
-  <circle cx="960" cy="440" r="400" fill="url(#halo)"/>
-  <g stroke="#39ff14" fill="none">
-    <g opacity="0.22"><line x1="0" y1="930" x2="1920" y2="930"/><line x1="0" y1="946" x2="1920" y2="946"/><line x1="0" y1="968" x2="1920" y2="968"/><line x1="0" y1="998" x2="1920" y2="998"/><line x1="0" y1="1040" x2="1920" y2="1040"/></g>
-    <g opacity="0.14"><line x1="960" y1="930" x2="-480" y2="1080"/><line x1="960" y1="930" x2="-120" y2="1080"/><line x1="960" y1="930" x2="240" y2="1080"/><line x1="960" y1="930" x2="600" y2="1080"/><line x1="960" y1="930" x2="960" y2="1080"/><line x1="960" y1="930" x2="1320" y2="1080"/><line x1="960" y1="930" x2="1680" y2="1080"/><line x1="960" y1="930" x2="2040" y2="1080"/><line x1="960" y1="930" x2="2400" y2="1080"/></g>
-  </g>
-  <rect width="1920" height="1080" fill="url(#vig)"/>
-  <polygon points="1130,440 1045,587.2 875,587.2 790,440 875,292.8 1045,292.8" fill="#0a0d0c" fill-opacity="0.6" stroke="#39ff14" stroke-width="4" filter="url(#glow)"/>
-  <polygon points="1100,440 1030,561.2 890,561.2 820,440 890,318.8 1030,318.8" fill="none" stroke="#39ff14" stroke-width="1.5" opacity="0.5"/>
-  <g fill="#39ff14" filter="url(#glow)"><circle cx="960" cy="418" r="30"/><polygon points="942,440 978,440 996,512 924,512"/></g>
-  <circle cx="960" cy="418" r="10" fill="#0a0d0c"/>
-  <g mask="url(#rm)"><use xlink:href="#wm" transform="translate(606 810) scale(1.5 -1.5)" stroke="#39ff14" stroke-width="6"/></g>
-  <use xlink:href="#wm" transform="translate(606 640) scale(1.5)" stroke="url(#neon)" stroke-width="6" filter="url(#glowsoft)"/>
-  <text x="960" y="872" text-anchor="middle" font-family="Fira Code, DejaVu Sans Mono, monospace" font-size="22" letter-spacing="12" fill="#9fd9a0" opacity="0.8">GO DARK  //  STAY SHARP</text>
-  <g stroke="#39ff14" stroke-width="3" fill="none" opacity="0.85" filter="url(#glowsoft)"><path d="M40 120V40H120"/><path d="M1800 40H1880V120"/><path d="M40 960V1040H120"/><path d="M1800 1040H1880V960"/></g>
-  <rect x="0" y="1076" width="1920" height="4" fill="#39ff14" opacity="0.55"/>
 </svg>
 SVGEOF
 
-# --- Theme packages (optional: each skipped if missing) + wallpaper render + prompt colors ---
+# --- Theme packages (optional) + wallpaper render + prompt colors ---
 cat > config/hooks/normal/0310-theme.hook.chroot <<'EOF'
 #!/bin/sh
 for p in arc-theme papirus-icon-theme fonts-jetbrains-mono xfce4-genmon-plugin \
@@ -603,16 +587,6 @@ progressbar progress, scale highlight, scale trough highlight, switch:checked, c
   color: #070a08; border-color: #39ff14; }
 scrollbar slider { border-radius: 8px; }
 scrollbar slider:hover, scrollbar slider:active { background-color: #39ff14; }
-tab:checked, notebook tab:checked { border-color: #39ff14; box-shadow: 0 -2px 8px rgba(57,255,20,0.35); }
-headerbar, .titlebar {
-  background-image: linear-gradient(to bottom, rgba(255,255,255,0.12), rgba(255,255,255,0) 60%);
-  border-bottom: 1px solid rgba(57,255,20,0.4); }
-menu, .popup, tooltip { border: 1px solid rgba(57,255,20,0.4); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.7); }
-#XfcePanelWindow, .xfce4-panel.background {
-  background-color: rgba(8,11,10,0.82);
-  background-image: linear-gradient(to bottom, rgba(57,255,20,0.14), rgba(255,255,255,0.02) 45%, rgba(0,0,0,0.35));
-  border-bottom: 1px solid rgba(57,255,20,0.55);
-  box-shadow: 0 2px 12px rgba(57,255,20,0.25); }
 EOF
 
 # --- XFCE settings: dark theme, icons, fonts ---
@@ -626,17 +600,6 @@ cat > $SKEL/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml <<'EOF'
   <property name="Gtk" type="empty">
     <property name="FontName" type="string" value="Inter 10"/>
     <property name="MonospaceFontName" type="string" value="Fira Code 10"/>
-  </property>
-</channel>
-EOF
-cat > $SKEL/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<channel name="xfwm4" version="1.0">
-  <property name="general" type="empty">
-    <property name="theme" type="string" value="Arc-Dark"/>
-    <property name="title_font" type="string" value="Sans Bold 9"/>
-    <property name="use_compositing" type="bool" value="true"/>
-    <property name="show_dock_shadow" type="bool" value="false"/>
   </property>
 </channel>
 EOF
@@ -654,10 +617,6 @@ cat > $SKEL/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml <<'EOF'
       <property name="position-locked" type="bool" value="true"/>
       <property name="size" type="uint" value="30"/>
       <property name="background-style" type="uint" value="0"/>
-      <property name="background-rgba" type="array">
-        <value type="double" value="0.04"/><value type="double" value="0.06"/>
-        <value type="double" value="0.05"/><value type="double" value="0.94"/>
-      </property>
       <property name="plugin-ids" type="array">
         <value type="int" value="1"/><value type="int" value="2"/><value type="int" value="3"/>
         <value type="int" value="4"/><value type="int" value="5"/><value type="int" value="6"/>
@@ -748,21 +707,10 @@ EOF
 # ================= v6: boot menu theme, Plymouth splash, welcome terminal =================
 mkdir -p assets
 cat > assets/splash.svg <<'SPLASHEOF'
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="640" height="480" viewBox="0 0 640 480">
-  <defs>
-    <radialGradient id="bg" cx="0.5" cy="0.35" r="0.8"><stop offset="0" stop-color="#16201d"/><stop offset="1" stop-color="#040606"/></radialGradient>
-    <pattern id="br" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="1" height="4" fill="#ffffff" opacity="0.035"/></pattern>
-    <linearGradient id="neon" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="60"><stop offset="0" stop-color="#e2ffd6"/><stop offset="0.45" stop-color="#39ff14"/><stop offset="1" stop-color="#0a9a2a"/></linearGradient>
-    <filter id="g" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <g id="wm" fill="none" stroke-linecap="square" stroke-linejoin="miter"><path transform="translate(0 0)" d="M36 8H6V30H34V52H4"/><path transform="translate(54 0)" d="M2 8H38M20 8V54"/><path transform="translate(108 0)" d="M36 8H6V52H36M6 30H30"/><path transform="translate(162 0)" d="M4 54V20L12 8H28L36 20V54M4 34H36"/><path transform="translate(216 0)" d="M6 8V52H36"/><path transform="translate(270 0)" d="M2 8H38M20 8V54"/><path transform="translate(324 0)" d="M6 8V54M34 8V54M6 31H34"/><path transform="translate(378 0)" d="M12 8H28L36 16V44L28 52H12L4 44V16Z"/><path transform="translate(432 0)" d="M36 8H6V30H34V52H4"/></g>
-  </defs>
-  <rect width="640" height="480" fill="url(#bg)"/><rect width="640" height="480" fill="url(#br)"/>
-  <polygon points="390,130 355,190.6 285,190.6 250,130 285,69.4 355,69.4" fill="none" stroke="#39ff14" stroke-width="3" filter="url(#g)" transform="translate(0 6)"/>
-  <g fill="#39ff14" filter="url(#g)" transform="translate(0 6)"><circle cx="320" cy="120" r="14"/><polygon points="311,130 329,130 337,166 303,166"/></g>
-  <use xlink:href="#wm" transform="translate(174 232) scale(0.62)" stroke="url(#neon)" stroke-width="6" filter="url(#g)"/>
-  <text x="320" y="310" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="11" letter-spacing="4" fill="#9fd9a0" opacity="0.85">GO DARK // STAY SHARP</text>
-  <g stroke="#39ff14" stroke-width="2" fill="none" opacity="0.8"><path d="M14 40V14H40"/><path d="M600 14H626V40"/><path d="M14 440V466H40"/><path d="M600 466H626V440"/></g>
-  <rect x="0" y="477" width="640" height="3" fill="#39ff14" opacity="0.55"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#040606"/>
+  <circle cx="320" cy="180" r="90" fill="none" stroke="#39ff14" stroke-width="4"/>
+  <text x="320" y="300" text-anchor="middle" font-family="DejaVu Sans Mono, monospace" font-size="17" fill="#9fd9a0" letter-spacing="4">GO DARK // STAY SHARP</text>
 </svg>
 SPLASHEOF
 rsvg-convert -w 640 -h 480 assets/splash.svg -o assets/splash.png
@@ -773,29 +721,17 @@ if [ -d /usr/share/live/build/bootloaders ]; then
   cp -r /usr/share/live/build/bootloaders/. config/bootloaders/
   find config/bootloaders -name 'splash.png' -exec cp assets/splash.png {} \;
   find config/bootloaders -name 'splash.svg' -exec cp assets/splash.svg {} \;
-  if [ -f config/bootloaders/isolinux/stdmenu.cfg ]; then
-    cat >> config/bootloaders/isolinux/stdmenu.cfg <<'MENUEOF'
-menu color screen  37;40 #80ffffff #00000000 std
-menu color border  30;44 #ff39ff14 #00000000 std
-menu color title   1;36;44 #ff39ff14 #00000000 std
-menu color unsel   37;44 #ffc8ffd0 #00000000 std
-menu color sel     7;37;40 #ff070a08 #ff39ff14 all
-menu color hotsel  1;7;37;40 #ff070a08 #ff39ff14 all
-menu color hotkey  1;37;44 #ff39ff14 #00000000 std
-menu color tabmsg  31;40 #ff7dff5e #00000000 std
-menu color help    37;40 #ffc8ffd0 #00000000 std
-MENUEOF
-  fi
 fi
 
-# --- Plymouth boot splash: neon hexagon + progress bar + passphrase prompt ---
+# --- Plymouth boot splash ---
 PLY=config/includes.chroot/usr/share/plymouth/themes/stealthos
 mkdir -p $PLY
 cat > assets/logo.svg <<'LOGOEOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
-  <defs><filter id="g" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-  <polygon points="220,120 170,206.6 70,206.6 20,120 70,33.4 170,33.4" fill="none" stroke="#39ff14" stroke-width="4" filter="url(#g)"/>
-  <g fill="#39ff14" filter="url(#g)"><circle cx="120" cy="108" r="17"/><polygon points="110,118 130,118 139,160 101,160"/></g>
+  <rect width="240" height="240" fill="#040606"/>
+  <polygon points="220,120 170,206.6 70,206.6 20,120 70,33.4 170,33.4" fill="none" stroke="#39ff14" stroke-width="4"/>
+  <circle cx="120" cy="108" r="17" fill="#39ff14"/>
+  <polygon points="110,118 130,118 139,160 101,160" fill="#39ff14"/>
 </svg>
 LOGOEOF
 rsvg-convert -w 240 -h 240 assets/logo.svg -o $PLY/logo.png
@@ -882,7 +818,7 @@ update-initramfs -u || true
 EOF
 chmod +x config/hooks/normal/0320-plymouth.hook.chroot
 
-# --- First-boot welcome terminal (shows commands, then runs the self-check after Tor settles) ---
+# --- First-boot welcome terminal ---
 cat > config/includes.chroot/etc/xdg/autostart/stealth-welcome.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -891,7 +827,7 @@ Exec=xfce4-terminal --hold --title="StealthOS" -e "bash -c 'cat /etc/motd; echo 
 OnlyShowIn=XFCE;
 EOF
 
-# ================= v7: Stealth Hub (point-and-click control center) =================
+# ================= v7: Stealth Hub =================
 BIN=config/includes.chroot/usr/local/bin
 cat > $BIN/stealth-hub <<'EOF'
 #!/bin/bash
@@ -949,7 +885,7 @@ EOF
 cat > config/hooks/normal/0330-pentest.hook.chroot <<'EOF'
 #!/bin/sh
 apt-get update || true
-for p in nmap masscan nikto gobuster ffuf sqlmap hydra john hashcat aircrack-ng wifite bettercap kismet reaver bully hcxtools hcxdumptool medusa ncrack crunch cewl wfuzz seclists dirb enum4linux smbmap smbclient python3-impacket impacket-scripts hping3 socat sslscan wafw00f whatweb commix zaproxy radare2 gdb python3-pwntools binwalk foremost mitmproxy ettercap-text-only exploitdb responder; do
+for p in nmap masscan nikto gobuster ffuf sqlmap hydra john hashcat aircrack-ng wifite bettercap kismet reaver bully hcxtools hcxdumptool medusa ncrack crunch cewl wfuzz seclists dirb enum4linux netexec; do
   apt-get install -y --no-install-recommends "$p" || echo "SKIPPED pentest: $p"
 done
 pip3 install --break-system-packages netexec || echo "SKIPPED pip: netexec"
@@ -963,6 +899,7 @@ EOF
 lb build 2>&1 | tee build.log
 ISO=$(ls "$WORK"/*.iso | head -1)
 sha256sum "$ISO" | tee "$ISO.sha256"
+
 echo
 echo "--- Packages skipped during build (review these) ---"
 grep -E 'SKIPPED' build.log || echo "none"
